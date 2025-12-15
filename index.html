@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pitch Interval Test</title>
+    <style>
+        /* --- General Layout --- */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f0f2f5;
+            display: flex;
+            justify-content: center; /* Centers horizontally */
+            align-items: center;     /* Centers vertically */
+            height: 100vh;
+            margin: 0;
+            color: #333;
+        }
+
+        .container {
+            background-color: white;
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            text-align: center;
+            width: 100%;
+            max-width: 500px;
+            display: flex;
+            flex-direction: column;
+            align-items: center; /* Ensures all children are centered */
+        }
+
+        h2 { margin-bottom: 20px; }
+
+        /* --- Visualizer (The Instruments) --- */
+        .visualizer-container {
+            width: 100%;
+            height: 120px;
+            background-color: #eee;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Representing two instruments/notes */
+        .note-visual {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            margin: 0 20px;
+            background-color: #bdc3c7;
+            transition: transform 0.2s, background-color 0.2s;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 12px;
+            color: white;
+            font-weight: bold;
+        }
+
+        .playing {
+            background-color: #3498db; /* Blue when playing */
+            transform: scale(1.2);
+            box-shadow: 0 0 15px rgba(52, 152, 219, 0.6);
+        }
+
+        /* --- Controls --- */
+        .play-btn {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            font-size: 18px;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: background 0.3s;
+            margin-bottom: 30px;
+        }
+
+        .play-btn:hover { background-color: #2980b9; }
+
+        /* --- Option Boxes (Darker & Centered) --- */
+        .options-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr; /* Two columns */
+            gap: 15px;
+            width: 100%;
+        }
+
+        .option-btn {
+            background-color: #2c3e50; /* Darker background requested */
+            color: #ecf0f1;            /* Light text */
+            border: 2px solid #34495e;
+            padding: 15px;
+            font-size: 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .option-btn:hover {
+            background-color: #34495e;
+            transform: translateY(-2px);
+        }
+
+        .option-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* --- Feedback Styles --- */
+        .feedback-area {
+            height: 40px;
+            margin-top: 20px;
+            font-weight: bold;
+            font-size: 18px;
+        }
+
+        /* Dynamic classes for results */
+        .correct-answer {
+            background-color: #27ae60 !important; /* Green */
+            border-color: #2ecc71 !important;
+        }
+        
+        .wrong-answer {
+            background-color: #c0392b !important; /* Red */
+            border-color: #e74c3c !important;
+        }
+
+        .msg-correct { color: #27ae60; }
+        .msg-wrong { color: #c0392b; }
+
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Ear Training</h2>
+    
+    <div class="visualizer-container">
+        <div id="note1" class="note-visual">1</div>
+        <div id="note2" class="note-visual">2</div>
+    </div>
+
+    <button class="play-btn" onclick="playInterval()">Play Interval</button>
+
+    <div class="options-grid" id="options-container">
+        </div>
+
+    <div class="feedback-area" id="feedback"></div>
+</div>
+
+<script>
+    // --- Audio Logic ---
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    
+    // Interval definitions (semitones)
+    const intervals = [
+        { name: "Unison", semitones: 0 },
+        { name: "Major 2nd", semitones: 2 },
+        { name: "Major 3rd", semitones: 4 },
+        { name: "Perfect 4th", semitones: 5 },
+        { name: "Perfect 5th", semitones: 7 },
+        { name: "Major 6th", semitones: 9 },
+        { name: "Major 7th", semitones: 11 },
+        { name: "Octave", semitones: 12 }
+    ];
+
+    let currentIntervalObj = null;
+    let isPlaying = false;
+
+    // Helper: Play a tone
+    function playTone(freq, duration, visualElementId, startTime) {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        // Visual feedback sync
+        setTimeout(() => {
+            document.getElementById(visualElementId).classList.add('playing');
+        }, startTime * 1000);
+
+        setTimeout(() => {
+            document.getElementById(visualElementId).classList.remove('playing');
+        }, (startTime + duration) * 1000);
+
+        // Audio Envelope
+        const now = audioCtx.currentTime + startTime;
+        osc.start(now);
+        gain.gain.setValueAtTime(0.5, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+        osc.stop(now + duration);
+    }
+
+    function playInterval() {
+        if(isPlaying) return;
+        isPlaying = true;
+        
+        // Resume context if blocked (browser policy)
+        if (audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+
+        // 1. Pick a random root note (between C3 and C5 approx)
+        const baseFreq = 261.63 * Math.pow(2, Math.random() * 2); 
+        
+        // 2. Pick a random interval if new round, otherwise replay current
+        if (!currentIntervalObj) {
+            setupNewRound(baseFreq);
+        } else {
+            // Replaying existing interval
+            playSequence(baseFreq, baseFreq * Math.pow(2, currentIntervalObj.semitones / 12));
+        }
+    }
+
+    function setupNewRound(baseFreq) {
+        // Reset UI
+        document.getElementById('feedback').textContent = '';
+        document.getElementById('feedback').className = 'feedback-area';
+        
+        // Pick random interval
+        const randomIndex = Math.floor(Math.random() * intervals.length);
+        currentIntervalObj = intervals[randomIndex];
+        const targetFreq = baseFreq * Math.pow(2, currentIntervalObj.semitones / 12);
+
+        // Generate Buttons
+        renderButtons();
+
+        // Play
+        playSequence(baseFreq, targetFreq);
+    }
+
+    function playSequence(freq1, freq2) {
+        // Play note 1
+        playTone(freq1, 0.6, 'note1', 0);
+        
+        // Play note 2 (after short delay)
+        playTone(freq2, 0.6, 'note2', 0.8);
+
+        setTimeout(() => { isPlaying = false; }, 1500);
+    }
+
+    function renderButtons() {
+        const container = document.getElementById('options-container');
+        container.innerHTML = ''; // Clear old buttons
+
+        // Shuffle intervals to make random button positions (optional, or keep static)
+        // For this example, let's keep the order static so user learns positions, 
+        // or we can select 4 random options including the correct one. 
+        // Let's list all basic intervals for now.
+        
+        intervals.forEach(interval => {
+            const btn = document.createElement('button');
+            btn.className = 'option-btn';
+            btn.textContent = interval.name;
+            btn.onclick = () => checkAnswer(interval, btn);
+            container.appendChild(btn);
+        });
+    }
+
+    // --- Answer Logic ---
+    function checkAnswer(selectedInterval, btnElement) {
+        if (!currentIntervalObj) return;
+
+        const feedbackEl = document.getElementById('feedback');
+        const allBtns = document.querySelectorAll('.option-btn');
+
+        // Disable all buttons so user can't spam click
+        allBtns.forEach(b => b.disabled = true);
+
+        if (selectedInterval.name === currentIntervalObj.name) {
+            // Correct!
+            btnElement.classList.add('correct-answer');
+            feedbackEl.textContent = "Correct!";
+            feedbackEl.classList.add('msg-correct');
+        } else {
+            // Wrong
+            btnElement.classList.add('wrong-answer');
+            feedbackEl.textContent = `Incorrect. It was a ${currentIntervalObj.name}`;
+            feedbackEl.classList.add('msg-wrong');
+
+            // Highlight the actual correct answer to help them learn
+            allBtns.forEach(b => {
+                if (b.textContent === currentIntervalObj.name) {
+                    b.classList.add('correct-answer');
+                }
+            });
+        }
+
+        // Reset for next round after a short delay (or require manual play)
+        setTimeout(() => {
+            currentIntervalObj = null; // Clear answer so Play triggers new round
+            const playBtn = document.querySelector('.play-btn');
+            playBtn.textContent = "Next Interval";
+            playBtn.style.backgroundColor = "#27ae60"; // Change play button to green
+            
+            // Re-enable play button logic
+            isPlaying = false;
+        }, 1000);
+    }
+    
+    // Initialize buttons on load (inactive until Play is clicked)
+    renderButtons();
+    document.querySelectorAll('.option-btn').forEach(b => b.disabled = true);
+
+    // Initial play button setup
+    document.querySelector('.play-btn').addEventListener('click', () => {
+        // Enable buttons after first play
+        document.querySelectorAll('.option-btn').forEach(b => b.disabled = false);
+        // Reset play button style if it was "Next"
+        const playBtn = document.querySelector('.play-btn');
+        playBtn.textContent = "Play Again / Next";
+        playBtn.style.backgroundColor = "#3498db";
+    });
+
+</script>
+
+</body>
+</html>
